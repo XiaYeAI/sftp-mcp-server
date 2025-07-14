@@ -1,0 +1,13 @@
+[project]
+name = "sftp-mcp-server"
+version = "2.0.0"
+description = "A standard MCP server for SFTP operations including directory sync, file upload, and remote command execution."
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.0.0",
+    "paramiko",
+    "python-dotenv"
+]
+
+[project.scripts]
+start = "python src/main.py"

@@ -16,9 +16,12 @@ import sys
 import json
 import asyncio
 import fnmatch
+import hashlib
+import stat
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from dotenv import load_dotenv
+from datetime import datetime
 
 import paramiko
 from fastmcp import FastMCP
@@ -62,29 +65,168 @@ def get_ssh_client():
     return ssh
 
 
-def is_ignored(path: str, ignore_patterns: List[str]) -> bool:
+class GitIgnoreMatcher:
+    """Enhanced ignore pattern matcher supporting .gitignore format."""
+    
+    def __init__(self, patterns: List[str]):
+        self.patterns = []
+        for pattern in patterns:
+            pattern = pattern.strip()
+            if not pattern or pattern.startswith('#'):
+                continue
+            self.patterns.append(self._parse_pattern(pattern))
+    
+    def _parse_pattern(self, pattern: str) -> Dict[str, Any]:
+        """Parse a gitignore pattern into components."""
+        original_pattern = pattern
+        
+        # Check for negation
+        negation = pattern.startswith('!')
+        if negation:
+            pattern = pattern[1:]
+        
+        # Check for directory-only
+        dir_only = pattern.endswith('/')
+        if dir_only:
+            pattern = pattern[:-1]
+        
+        # Handle leading slash
+        anchored = pattern.startswith('/')
+        if anchored:
+            pattern = pattern[1:]
+        
+        # Handle trailing **
+        if pattern.endswith('**'):
+            pattern = pattern[:-2] + '*'
+        
+        return {
+            'pattern': pattern,
+            'negation': negation,
+            'dir_only': dir_only,
+            'anchored': anchored,
+            'original': original_pattern
+        }
+    
+    def match(self, path: str, is_dir: bool = False) -> bool:
+        """Check if path matches any ignore pattern."""
+        path = path.replace('\\', '/')
+        
+        # Track if any negation matches
+        negated = False
+        
+        for rule in self.patterns:
+            # Skip directory-only patterns for files
+            if rule['dir_only'] and not is_dir:
+                continue
+            
+            match_path = path
+            if rule['anchored']:
+                # Anchored patterns match from root
+                if not path.startswith(rule['pattern']):
+                    continue
+            
+            # Check for exact match or wildcard match
+            matched = False
+            if rule['pattern'] == '':
+                matched = True
+            elif '**' in rule['pattern']:
+                # Handle ** wildcards
+                parts = rule['pattern'].split('**')
+                if all(part in match_path for part in parts if part):
+                    matched = True
+            elif fnmatch.fnmatch(match_path, rule['pattern']) or \
+                 fnmatch.fnmatch(os.path.basename(match_path), rule['pattern']):
+                matched = True
+            
+            if matched:
+                if rule['negation']:
+                    negated = True
+                else:
+                    if not negated:
+                        return True
+        
+        return negated
+
+def is_ignored(path: str, ignore_patterns: List[str], is_dir: bool = False) -> bool:
     """Check if a path should be ignored based on patterns."""
-    normalized_path = path.replace('\\', '/')
-    for pattern in ignore_patterns:
-        normalized_pattern = pattern.replace('\\', '/')
-        if normalized_pattern.endswith('/'):
-            if (normalized_path + '/').startswith(normalized_pattern):
-                return True
-        else:
-            if fnmatch.fnmatch(normalized_path, normalized_pattern) or \
-               fnmatch.fnmatch(os.path.basename(normalized_path), normalized_pattern):
-                return True
+    matcher = GitIgnoreMatcher(ignore_patterns)
+    return matcher.match(path, is_dir)
+
+def load_gitignore_patterns(local_path: str) -> List[str]:
+    """Load .gitignore patterns from local directory."""
+    gitignore_path = os.path.join(local_path, '.gitignore')
+    patterns = []
+    
+    if os.path.exists(gitignore_path):
+        try:
+            with open(gitignore_path, 'r', encoding='utf-8') as f:
+                patterns.extend(line.strip() for line in f if line.strip() and not line.startswith('#'))
+        except Exception:
+            pass  # Ignore gitignore loading errors
+    
+    return patterns
+
+
+def get_file_hash(file_path: str) -> str:
+    """Calculate MD5 hash of a file."""
+    hash_md5 = hashlib.md5()
+    try:
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+    except Exception:
+        return ""
+
+def get_remote_file_info(sftp, remote_path: str) -> Optional[Dict[str, Any]]:
+    """Get remote file information including size and modification time."""
+    try:
+        stat = sftp.stat(remote_path)
+        return {
+            'size': stat.st_size,
+            'mtime': stat.st_mtime
+        }
+    except FileNotFoundError:
+        return None
+
+def should_sync_file(local_path: str, remote_info: Optional[Dict[str, Any]], 
+                    check_hash: bool = False) -> bool:
+    """Determine if a file should be synced based on various criteria."""
+    if remote_info is None:
+        return True
+    
+    local_stat = os.stat(local_path)
+    
+    # Check file size first (fast check)
+    if local_stat.st_size != remote_info['size']:
+        return True
+    
+    # Check modification time (medium check)
+    local_mtime = local_stat.st_mtime
+    remote_mtime = remote_info['mtime']
+    
+    # Allow 1 second difference for filesystem precision issues
+    if abs(local_mtime - remote_mtime) > 1:
+        return True
+    
+    # Optionally check hash (slow but accurate)
+    if check_hash:
+        local_hash = get_file_hash(local_path)
+        return local_hash != get_remote_file_hash(local_path, remote_info)
+    
     return False
 
-
 @mcp.tool()
-def sync_directory(local_dir: Optional[str] = None, remote_dir: Optional[str] = None) -> Dict[str, Any]:
+def sync_directory(local_dir: Optional[str] = None, remote_dir: Optional[str] = None, 
+                  skip_unchanged: bool = True, check_hash: bool = False) -> Dict[str, Any]:
     """
     Synchronize a local directory to remote SFTP server.
     
     Args:
         local_dir: Local directory path (defaults to LOCAL_PATH env var)
         remote_dir: Remote directory path (defaults to REMOTE_PATH env var)
+        skip_unchanged: Skip files that haven't changed (default: True)
+        check_hash: Use file hash for change detection (default: False)
     
     Returns:
         Dictionary with sync results including uploaded files and any errors
@@ -98,12 +240,17 @@ def sync_directory(local_dir: Optional[str] = None, remote_dir: Optional[str] = 
     if not os.path.exists(local_path):
         return {"error": f"Local path does not exist: {local_path}"}
     
+    # Load gitignore patterns if available
+    gitignore_patterns = load_gitignore_patterns(local_path)
+    all_patterns = IGNORE_PATTERNS + gitignore_patterns
+    
     try:
         ssh_client = get_ssh_client()
         sftp = ssh_client.open_sftp()
         
         results = {
             "uploaded_files": [],
+            "skipped_files": [],
             "created_directories": [],
             "ignored_items": [],
             "errors": []
@@ -126,7 +273,7 @@ def sync_directory(local_dir: Optional[str] = None, remote_dir: Optional[str] = 
             # Filter ignored directories
             original_dirs = list(dirs)
             dirs[:] = [d for d in original_dirs 
-                      if not is_ignored(os.path.join(os.path.relpath(root, local_path), d), IGNORE_PATTERNS)]
+                      if not is_ignored(os.path.join(os.path.relpath(root, local_path), d), all_patterns, True)]
             
             for d in original_dirs:
                 if d not in dirs:
@@ -145,7 +292,7 @@ def sync_directory(local_dir: Optional[str] = None, remote_dir: Optional[str] = 
             # Upload files
             for filename in files:
                 relative_file_path = os.path.relpath(os.path.join(root, filename), local_path)
-                if is_ignored(relative_file_path, IGNORE_PATTERNS):
+                if is_ignored(relative_file_path, all_patterns):
                     results["ignored_items"].append(relative_file_path)
                     continue
                 
@@ -153,8 +300,17 @@ def sync_directory(local_dir: Optional[str] = None, remote_dir: Optional[str] = 
                 remote_file_path = os.path.join(remote_path, relative_file_path).replace('\\', '/')
                 
                 try:
-                    sftp.put(local_file_path, remote_file_path)
-                    results["uploaded_files"].append(relative_file_path)
+                    # Check if file should be synced
+                    remote_info = None
+                    if skip_unchanged:
+                        remote_info = get_remote_file_info(sftp, remote_file_path)
+                    
+                    if not skip_unchanged or should_sync_file(local_file_path, remote_info, check_hash):
+                        sftp.put(local_file_path, remote_file_path)
+                        results["uploaded_files"].append(relative_file_path)
+                    else:
+                        results["skipped_files"].append(relative_file_path)
+                        
                 except Exception as e:
                     results["errors"].append(f"Failed to upload {relative_file_path}: {str(e)}")
         

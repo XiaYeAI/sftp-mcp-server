@@ -65,9 +65,6 @@ uv run python src/main.py
 }
 ```
 
-
-```
-
 **重要说明：**
 - 将 `/path/to/your/project` 替换为您的项目根目录的绝对路径
 - 服务器使用 stdio 传输，因此不会暴露网络端口

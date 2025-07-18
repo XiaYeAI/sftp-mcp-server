@@ -36,17 +36,9 @@ uv sync
 
 如果需要手动测试，可以使用以下命令：
 
-*   **使用 `python`：**
-
-    ```bash
-    python src/main.py
-    ```
-
-*   **使用 `uv`：**
-
-    ```bash
-    uv run python src/main.py
-    ```
+```bash
+uv run python src/main.py
+```
 
 服务器将使用 stdio 传输方式运行，并通过 JSON-RPC 2.0 进行通信。
 
@@ -62,7 +54,6 @@ uv sync
        "args": ["--directory", "/path/to/your/project", "run", "python", "src/main.py"],
       "env": {
          "TARGET_HOST": "your-sftp-server.com",
-         "TARGET_PORT": "22",
          "TARGET_USERNAME": "your-username",
          "TARGET_PASSWORD": "your-password",
          "LOCAL_PATH": "/path/to/local/directory",
@@ -74,27 +65,7 @@ uv sync
 }
 ```
 
-**或者使用 Python 直接运行：**
 
-```json
-{
-  "mcpServers": {
-    "sftp-server": {
-      "command": "python",
-      "args": ["src/main.py"],
-      "cwd": "/path/to/your/project",
-      "env": {
-         "TARGET_HOST": "your-sftp-server.com",
-         "TARGET_PORT": "22",
-         "TARGET_USERNAME": "your-username",
-         "TARGET_PASSWORD": "your-password",
-         "LOCAL_PATH": "/path/to/local/directory",
-         "REMOTE_PATH": "/path/to/remote/directory",
-         "IGNORE_PATTERNS": "[\"*.log\", \"node_modules/\", \".git/\"]"
-       }
-     }
-   }
- }
 ```
 
 **重要说明：**
@@ -168,7 +139,6 @@ uv sync
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
 | `TARGET_HOST` | SFTP 服务器主机名或 IP 地址 | 必需 |
-| `TARGET_PORT` | SFTP 服务器端口 | `22` |
 | `TARGET_USERNAME` | SFTP 用户名 | 必需 |
 | `TARGET_PASSWORD` | SFTP 密码 | 必需 |
 | `LOCAL_PATH` | 本地目录路径 | 必需 |

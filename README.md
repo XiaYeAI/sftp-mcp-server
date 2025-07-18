@@ -143,7 +143,7 @@ uv run python src/main.py
 | `TARGET_PASSWORD` | SFTP 密码 | 必需 |
 | `LOCAL_PATH` | 本地目录路径 | 必需 |
 | `REMOTE_PATH` | 远程目录路径 | 必需 |
-| `IGNORE_PATTERNS` | 要忽略的文件模式（JSON 数组格式，例如：`["*.log", "node_modules/", ".git/"]`） | `[]` |
+| `IGNORE_PATTERNS` | 要忽略的文件模式 | `[]` |
 
 ## 功能特性
 
@@ -225,15 +225,3 @@ list_remote_directory("/remote/path")
 - IGNORE_PATTERNS 必须是有效的 JSON 数组格式
 - 模式支持 Unix 风格的通配符（*、?、[]）
 - 目录模式应以 `/` 结尾
-
-## 从 v1.x 迁移
-
-如果您正在从之前基于 FastAPI 的版本升级：
-
-1. 更新您的 MCP 客户端配置以删除 HTTP 特定设置
-2. 删除 APP_HOST、APP_PORT 和 MCP_SECRET_TOKEN 环境变量
-3. 服务器现在使用 stdio 传输而不是 HTTP
-4. 所有端点现在都是 MCP 工具而不是 REST API 端点
-5. 实时进度流被同步工具响应替代
-
-核心功能保持不变，但接口已更改以符合 MCP 标准。

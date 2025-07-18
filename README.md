@@ -10,10 +10,33 @@ A Model Context Protocol (MCP) server that provides SFTP operations including di
 
 ## Installation & Setup
 
-1. Install dependencies using `uv`:
-   ```bash
-   uv sync
-   ```
+This project uses Python. It is recommended to use a virtual environment.
+
+1.  **Create and activate a virtual environment:**
+
+    ```bash
+    python -m venv .venv
+    # On Windows
+    .venv\Scripts\activate
+    # On macOS/Linux
+    source .venv/bin/activate
+    ```
+
+2.  **Install dependencies:**
+
+    This project provides a `requirements.txt` file to install all necessary dependencies. You can also use `uv` if you have it installed.
+
+    *   **Using `pip` (recommended):**
+
+        ```bash
+        pip install -r requirements.txt
+        ```
+
+    *   **Using `uv`:**
+
+        ```bash
+        uv sync
+        ```
 
 2. Set up environment variables (create a `.env` file or set them in your environment):
    ```bash
@@ -33,10 +56,19 @@ A Model Context Protocol (MCP) server that provides SFTP operations including di
 
 ## Running the Service
 
-Start the MCP server:
-```bash
-uv run start
-```
+Once the dependencies are installed, you can start the MCP server.
+
+*   **Using `python`:**
+
+    ```bash
+    python src/main.py
+    ```
+
+*   **Using `uv`:**
+
+    ```bash
+    uv run start
+    ```
 
 The server will run using stdio transport and communicate via JSON-RPC 2.0.
 

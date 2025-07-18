@@ -569,6 +569,11 @@ Example: upload_file("/path/to/local/file.txt", "/remote/path/file.txt")
 """
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the MCP server."""
     # Run the MCP server using stdio transport
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

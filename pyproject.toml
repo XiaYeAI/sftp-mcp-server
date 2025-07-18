@@ -8,6 +8,3 @@ dependencies = [
     "paramiko",
     "python-dotenv"
 ]
-
-[project.scripts]
-start = "python src/main.py"

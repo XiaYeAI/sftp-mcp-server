@@ -231,14 +231,24 @@ def sync_directory(local_dir: Optional[str] = None, remote_dir: Optional[str] = 
     Returns:
         Dictionary with sync results including uploaded files and any errors
     """
+    # Validate parameters against environment variables
+    if local_dir is not None and LOCAL_PATH and local_dir != LOCAL_PATH:
+        return {"error": f"Parameter local_dir '{local_dir}' does not match LOCAL_PATH env var '{LOCAL_PATH}'. Please use consistent configuration."}
+    
+    if remote_dir is not None and REMOTE_PATH and remote_dir != REMOTE_PATH:
+        return {"error": f"Parameter remote_dir '{remote_dir}' does not match REMOTE_PATH env var '{REMOTE_PATH}'. Please use consistent configuration."}
+    
     local_path = local_dir or LOCAL_PATH
     remote_path = remote_dir or REMOTE_PATH
     
     if not local_path or not remote_path:
-        return {"error": "Local and remote paths must be specified"}
+        return {"error": "Local and remote paths must be specified either as parameters or environment variables"}
     
     if not os.path.exists(local_path):
         return {"error": f"Local path does not exist: {local_path}"}
+    
+    # Log the actual paths being used for transparency
+    print(f"[SFTP-MCP] Syncing from '{local_path}' to '{remote_path}'")
     
     # Load gitignore patterns if available
     gitignore_patterns = load_gitignore_patterns(local_path)
